@@ -1,0 +1,14 @@
+.git
+.venv
+node_modules
+static
+__pycache__
+.pytest_cache
+data/*.sqlite3
+data/*.sqlite3-*
+data/*.db
+data/*.db-*
+backups/*.zip
+.env
+.env.*
+!.env.example

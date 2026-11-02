@@ -1,0 +1,22 @@
+# SOLAR ANALYTICS — TODO
+
+## Dashboard e navegação
+- [x] **Dashboard de energia e períodos:** apresentar quatro indicadores principais: energia produzida (kWh), energia consumida (kWh), energia injetada na rede (kWh) e valor da última fatura (R$). Incluir gráficos de geração diária e mensal, consumo, comparação entre produção e consumo e histórico financeiro. Disponibilizar filtros por dia, semana, mês e ano.
+- [x] **Identidade e interface:** criar uma aplicação chamada SOLAR ANALYTICS com o slogan “Inteligência que transforma energia em economia”. Usar interface premium, moderna e tecnológica, inspirada em centrais inteligentes de energia; tema escuro com preto, grafite e azul profundo; verde-esmeralda e verde-limão como destaques; glassmorphism moderado; gráficos interativos, animações suaves, tipografia moderna, ícones minimalistas, excelente organização e design responsivo priorizando computadores. Evitar aparência de template genérico e excesso de elementos.
+
+## Medições, faturas e análise
+- [x] **Dados solares residenciais:** monitorar geração solar, consumo residencial e valores pagos à Neoenergia Pernambuco (antiga Celpe), comparando os dados para identificar economia e possíveis divergências no faturamento. Permitir cadastrar dados reais manualmente.
+- [x] **Importação, revisão e cadastro de faturas:** permitir cadastrar e importar faturas em PDF, usando PyMuPDF para extrair consumo faturado, energia injetada, energia compensada, créditos acumulados, valor total da fatura, valor pago e vencimento. Permitir revisar e corrigir os dados extraídos antes de salvar. Não preencher nem inventar informações ausentes.
+- [x] **Histórico e economia:** apresentar histórico de pagamentos, evolução das contas e economia estimada, apoiando a identificação de divergências no faturamento.
+- [x] **Análise energética e tarifária:** diferenciar corretamente energia produzida, energia consumida, energia injetada e energia compensada. Calcular indicadores de economia, aproveitamento solar e créditos acumulados. Considerar regras de compensação da geração distribuída, custos de disponibilidade e tarifas configuráveis. Não inventar valores quando faltarem informações.
+
+## Integração, persistência e operação
+- [x] **Preparação GoodWe SEMS+:** preparar arquitetura com módulo independente para futura integração com a API oficial GoodWe SEMS+, incluindo autenticação, consulta de geração, consumo, potência e sincronização. A API não será conectada agora e não deve haver simulação de conexão real. Exibir exatamente “Aguardando credenciais da API GoodWe”. Preparar campos para AppID, AppSecret e identificação da usina e proteger credenciais.
+- [x] **Modo demonstração:** fornecer dados fictícios claramente identificados como demonstração; permitir removê-los e inserir dados reais manualmente.
+- [x] **Persistência, exportação e backup:** usar banco de dados SQLite persistente, permitir exportar dados em CSV e criar/restaurar backup local.
+- [x] **Execução e estrutura técnica:** implementar backend Python + FastAPI; frontend React + TypeScript; estilização Tailwind CSS; gráficos Recharts; SQLite e PDF com PyMuPDF. Criar `iniciar.bat`, `.env.example`, `requirements.txt` e `README.md`. A aplicação deve funcionar localmente no Windows, sem hospedagem externa, e ficar organizada e preparada para futura publicação na web e integração GoodWe.
+- [x] **Testes e entrega funcional:** entregar aplicação funcional, não apenas protótipo visual; testar funcionalidades e organizar o código.
+
+## Segurança e privacidade
+- [x] **Auditoria de exposição e segredos:** verificar o código, o banco e o ZIP de distribuição; não incluir `.env`, credenciais, SQLite ativo, sidecars SQLite ou backups no pacote. Confirmar que os dados persistidos nesta sessão são somente fictícios de demonstração e que nenhuma integração GoodWe real está ativa.
+- [x] **Hardening local e arquivos de entrada:** validar `Origin` das operações mutáveis e permitir `Host` somente por allowlist; aplicar `Cache-Control: no-store`, `nosniff` e política de referência; ocultar documentação API no Preview/contêiner configurado; restringir AppSecret a backends keyring de sistema operacional aprovados; limitar PDFs e backups, proteger diretórios/arquivos locais, neutralizar fórmulas CSV e atualizar dependências auditadas. Documentar que não há autenticação e que o Preview/contêiner não deve receber dados reais nem ser publicado publicamente sem autenticação e controle de acesso.

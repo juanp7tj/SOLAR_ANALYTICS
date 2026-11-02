@@ -1,0 +1,30 @@
+{
+  "name": "solar-analytics",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.2",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "dev:cloud-preview": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "preview:cloud": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "lucide-react": "0.468.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "2.15.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.2.1",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.5.32",
+    "tailwindcss": "3.4.16",
+    "typescript": "5.7.2",
+    "vite": "8.3.5"
+  }
+}
