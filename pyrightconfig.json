@@ -1,0 +1,15 @@
+{
+  "include": ["app", "tests"],
+  "exclude": [".venv", "node_modules", "static"],
+  "pythonVersion": "3.12",
+  "pythonPlatform": "All",
+  "venvPath": ".",
+  "venv": ".venv",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": ["."]
+    }
+  ],
+  "typeCheckingMode": "basic"
+}

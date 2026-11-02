@@ -125,6 +125,11 @@ class DemoStatus(BaseModel):
     demo_invoices: int
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=1024)
+
+
 class PdfExtractOut(InvoiceBase):
     extracted_fields: list[str] = []
     file_name: str

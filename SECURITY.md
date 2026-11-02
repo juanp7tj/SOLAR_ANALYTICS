@@ -1,34 +1,42 @@
 # Relatório de segurança — SOLAR ANALYTICS
 
-**Verificação:** 2 de novembro de 2026. **Ambiente:** sandbox Linux do Manus. **Resultado:** não encontrei credenciais GoodWe, `.env` com segredos nem dados reais nos artefatos verificados. O SQLite usado nesta sessão contém somente registros de demonstração; o AppSecret está sem configuração. A Preview do Manus permanece ativa, mas não foi publicada como site público.
+**Verificação:** 2 de novembro de 2026. **Ambiente:** sandbox Linux do Manus. **Estado:** login de administrador implementado e endurecido; nenhum serviço público do Render foi criado. A revisão da cópia local e dos arquivos de distribuição não encontrou credenciais GoodWe, senha real ou arquivo `.env` com segredos. O banco SQLite da sessão contém apenas demonstração fictícia. Os valores usados em testes de autenticação são exclusivamente de teste e não configuram acesso de produção.
 
 ## Escopo e resultado
 
-Foram inspecionados o código da aplicação, configurações de execução, regras de exclusão Git/Docker, SQLite local e pacote de distribuição. O pacote final foi verificado para não conter `.env`, banco SQLite, sidecars (`-wal`, `-shm`, `-journal`) ou backups. A base de demonstração não representa consumo ou contas reais.
+Foram inspecionados FastAPI/React, autenticação, middleware ASGI, rotas de upload, limites de arquivos, CSV, backup/restauração, credenciais GoodWe, configuração Render, arquivo de ambiente de exemplo, regras de exclusão e pacote de entrega. Uma revisão independente encontrou riscos concretos no upload multipart antes da autenticação e no crescimento ilimitado do estado de rate limit; ambos foram corrigidos e cobertos por regressões automatizadas. Também foi adicionada uma asserção de integração para flags de cookie em HTTPS e outra para a ordem do middleware.
 
-Auditorias executadas em 2 de novembro de 2026: `pip-audit -r requirements.txt` e `pip-audit` retornaram **No known vulnerabilities found**; `npm audit --audit-level=low` encontrou **0 vulnerabilidades**. Versões Python fixadas após atualização: FastAPI 0.162.0, Starlette 1.10.0, python-multipart 0.0.33, pytest 9.2.0 e pip 26.2.2 no inicializador Windows/contêiner. As versões podem mudar de segurança após esta data; execute as auditorias novamente antes de uma publicação.
+Validação após as correções: **17 testes Python passaram**; `compileall` passou; TypeScript e build Vite passaram; `pip-audit -r requirements.txt` retornou **No known vulnerabilities found** e `npm audit --audit-level=low` encontrou **0 vulnerabilidades**. O build Vite ainda imprime um aviso de chunk JavaScript acima de 500 kB sem gzip (aprox. 164 kB gzip); não é erro de build. PyMuPDF emite cinco avisos SWIG de depreciação sem falha de execução.
 
-## Mitigações aplicadas
+A verificação de exposição cobre os arquivos locais e o ZIP entregue, não o histórico remoto do GitHub, as configurações da conta Render ou os arquivos que o usuário possa ter enviado anteriormente ao GitHub. Marcadores comuns de chave/token não foram encontrados nos arquivos de texto auditados. Não foi inspecionado o conteúdo do `.env`, da base nem dos backups como valores; somente a classificação/escopo necessários para confirmar que dados pessoais não entraram no pacote.
 
-- **Acesso e navegação:** o iniciador Windows mantém o backend em `127.0.0.1`; o desenvolvimento local mantém o Vite em loopback. Operações de escrita rejeitam `Origin` fora da lista permitida e o FastAPI verifica `Host`. O Vite aceita somente o hostname exato da Preview deste projeto, sem wildcard. As respostas `/api` usam `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` e `Referrer-Policy: no-referrer`. A documentação OpenAPI fica desativada quando `SOLAR_DISABLE_API_DOCS=true`, opção usada na Preview.
-- **Segredos:** o AppSecret GoodWe não é retornado pelo backend nem persistido em SQLite/`.env`/backup. A gravação só é permitida quando `keyring` identifica Windows Credential Manager, macOS Keychain ou Linux Secret Service. O backend `keyring.backends.fail` observado no sandbox foi recusado; a integração GoodWe continua desligada.
-- **Uploads e backups:** PDF até 20 MB, 100 páginas e 1 milhão de caracteres extraídos. Restauração aceita até 100 MB, valida SQLite, limita arquivos ZIP a 1.000 entradas e limita leitura do conteúdo descompactado. Teste com ZIP acima do limite foi rejeitado sem modificar os dados.
-- **Armazenamento local:** em POSIX, diretórios de dados/backups ficam em modo `0700` e SQLite/ZIP em `0600`. No Windows, `iniciar.bat` aplica ACL ao usuário atual nas pastas `data` e `backups`. Regras Git/Docker também excluem sidecars SQLite. CSV neutraliza fórmulas de planilha, incluindo marcadores precedidos por caracteres invisíveis.
-- **Validação:** `9` testes Python passaram; build TypeScript/Vite concluiu; auditorias pip/npm sem achados; health, manifesto, origem/host, documentação desativada, backup/restauração e limites de ZIP foram verificados por HTTP.
+## Controles e validações
 
-## Limitações importantes
+| Área | Implementação e evidência |
+|---|---|
+| Conta administrativa | Conta única; variáveis de ambiente, senha mínima de 16 caracteres e chave de sessão de pelo menos 32 caracteres; inicialização pública falha fechada se faltarem credenciais; sem cadastro público. |
+| Sessão | Cookie assinado e `HttpOnly`, expiração de 12 h; teste isolado com host HTTPS Render verifica `Secure`, `SameSite=None` e `Max-Age=43200`; teste localhost confirma `SameSite=Lax` sem `Secure`. Logout e rotas de dados protegidos. |
+| Upload antes do parser | Middleware ASGI valida a sessão antes de entregar corpos de requisição ao FastAPI. Teste confirma resposta 401 sem invocar `receive` para upload não autenticado; requisições excessivas com `Content-Length` são rejeitadas sem leitura; o teto de streaming cobre corpos fragmentados/sem `Content-Length`. Teste de ordem assegura `SessionMiddleware` e `TrustedHostMiddleware` antes do gate. |
+| Tamanho dos corpos | PDF: arquivo até 20 MiB, corpo de requisição até 22 MiB para overhead multipart. Backup: arquivo até 100 MiB, corpo até 102 MiB. Corpos de outras rotas API: até 1 MiB. Os handlers mantêm limites próprios de arquivo e validação. |
+| Tentativas de login | Oito falhas por endereço de cliente em janela de 15 minutos; expurgo local e global de tentativas expiradas; estado em memória limitado a 4.096 endereços. Teste cobre teto e expiração. O contador reinicia com o processo e não substitui WAF/rate limit distribuído. |
+| CSRF e host | `TrustedHostMiddleware` precede o gate; `SessionMiddleware` envolve o gate para validar a sessão assinada. A origem HTTPS canônica Render é confiável e localhost não é adicionado por padrão em produção. Smoke ASGI bloqueou origem local/atacante no cenário público. Nenhum cabeçalho `X-Frame-Options` impede o iframe da Preview Manus. |
+| Arquivos, backup e CSV | PDF limitado a 20 MiB, 100 páginas e 1 milhão de caracteres extraídos; backup validado até 100 MiB, ZIP até 1.000 entradas e tamanho descompactado limitado. CSV neutraliza fórmulas. Permissões POSIX 0700/0600; `iniciar.bat` tenta restringir ACL Windows ao usuário atual. ZIP de backup não é criptografado. |
+| GoodWe e documentação API | GoodWe SEMS+ não está conectada e não faz chamadas fictícias. AppSecret só é salvo quando há cofre `keyring` aprovado. OpenAPI/Docs ficam desligadas no Blueprint; `/api` recebe `no-store`, `nosniff` e política de referência restritiva. |
+| Dependências | `pip-audit` e `npm audit` sem vulnerabilidades conhecidas nas versões fixadas verificadas nesta data. |
 
-**A aplicação não tem login.** A versão local é single-user e deve permanecer em loopback. A Preview do Manus roda em sandbox cloud e atualmente contém apenas dados fictícios; ela não é uma versão autenticada para uso com faturas reais nem uma publicação pública. Não compartilhe a Preview nem use dados pessoais/financeiros reais nela. O contêiner opcional também não adiciona autenticação. Antes de publicar ou permitir acesso de outras pessoas, implementar autenticação, autorização, proteção CSRF apropriada, armazenamento remoto persistente, gestão de segredos e revisão de exposição.
+## Limitações e pendências
 
-Os arquivos ZIP de backup **não são criptografados**. Mantenha-os em diretório protegido ou volume criptografado e não os envie a terceiros sem proteção. O código `icacls` e o uso real do Windows Credential Manager não puderam ser executados neste sandbox Linux; confirme as ACLs NTFS na máquina Windows. Se `SOLAR_DATA_DIR` for personalizado, revise manualmente suas permissões. O Docker também não foi executado neste ambiente.
+**Render Free não oferece disco persistente.** SQLite e arquivos do serviço podem desaparecer após suspensão, reinicialização ou novo deploy. O Blueprint é apenas demonstrativo; não use nele faturas, dados residenciais reais nem credenciais GoodWe. Mantenha qualquer ZIP de backup em armazenamento local protegido.
 
-A verificação é pontual e baseada no checkout/ZIP atual; não é garantia de ausência absoluta de vulnerabilidades, nem inclui auditoria de histórico Git, sistema Windows do usuário ou uma implantação pública. Nenhuma chamada ou sincronização com GoodWe foi realizada.
+**A publicação ainda não ocorreu.** A branch `main` do GitHub precisa receber a versão atualizada com login e middleware pré-parser. Depois, é necessário confirmar que aceita uma instância pública gratuita somente para demonstração, sem persistência garantida. O usuário/senha administrativo serão definidos no painel Render e não fazem parte do código nem do pacote.
 
-## Referências das versões auditadas
+A conta não inclui MFA, recuperação por e-mail nem múltiplos usuários. O rate limit é de processo único e não protege contra campanhas distribuídas; um proxy com rate limit global é recomendado antes de exposição ampla. A proteção de AppSecret depende de cofre do sistema operacional; no Render Free, não insira credenciais GoodWe. ACL `icacls`, Windows Credential Manager, Docker e uma instância Render real não puderam ser executados neste sandbox Linux. A auditoria é pontual e não substitui monitoramento contínuo ou revisão de produção.
 
-- [FastAPI 0.162.0 — PyPI](https://pypi.org/project/fastapi/0.162.0/)
-- [Starlette 1.10.0 — PyPI](https://pypi.org/project/starlette/1.10.0/)
-- [python-multipart 0.0.33 — PyPI](https://pypi.org/project/python-multipart/0.0.33/)
-- [pytest 9.2.0 — PyPI](https://pypi.org/project/pytest/9.2.0/)
-- [pip 26.2.2 — PyPI](https://pypi.org/project/pip/26.2.2/)
+## Referências
+
+- [Render — serviços no plano gratuito](https://render.com/docs/free)
+- [Render — discos persistentes](https://render.com/docs/disks)
+- [Render — Web Services](https://render.com/docs/web-services)
+- [Starlette — middleware](https://www.starlette.io/middleware/)
+- [Starlette — sessões](https://www.starlette.io/middleware/#sessionmiddleware)
 - [OSV — base pública consultada pelo `pip-audit`](https://osv.dev/)

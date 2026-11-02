@@ -3,12 +3,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.limits import MAX_PDF_BYTES
 from app.models import Invoice
 from app.schemas import InvoiceCreate, InvoiceOut, PdfExtractOut
 from app.services.pdf_parser import extract_invoice_fields
 
 router = APIRouter(prefix="/api/invoices", tags=["Faturas Neoenergia"])
-MAX_PDF_BYTES = 20 * 1024 * 1024
 
 
 @router.get("", response_model=list[InvoiceOut])

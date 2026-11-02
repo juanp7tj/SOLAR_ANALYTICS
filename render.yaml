@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: solar-analytics
+    runtime: docker
+    plan: free
+    region: virginia
+    branch: main
+    healthCheckPath: /api/health
+    envVars:
+      - key: SOLAR_AUTH_REQUIRED
+        value: "true"
+      - key: SOLAR_ADMIN_USERNAME
+        sync: false
+      - key: SOLAR_ADMIN_PASSWORD
+        sync: false
+      - key: SOLAR_SESSION_SECRET
+        generateValue: true
+      - key: SOLAR_COOKIE_SECURE
+        value: "true"
+      - key: SOLAR_VOLATILE_STORAGE
+        value: "true"
+      - key: SOLAR_DATA_DIR
+        value: /app/data
+      - key: SOLAR_BACKUP_DIR
+        value: /app/data/backups
+      - key: SOLAR_DEMO_AUTOLOAD
+        value: "true"
+      - key: SOLAR_DISABLE_API_DOCS
+        value: "true"

@@ -1,22 +1,29 @@
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  const response = await fetch(`/api${path}`, { ...init, headers, cache: 'no-store' });
+  const response = await fetch(`/api${path}`, { ...init, headers, credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { detail?: string } | null;
-    throw new Error(payload?.detail || `A solicitação falhou (${response.status}).`);
+    throw new ApiError(payload?.detail || `A solicitação falhou (${response.status}).`, response.status);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
 export async function downloadFile(path: string, suggestedName: string): Promise<void> {
-  const response = await fetch(path, { cache: 'no-store' });
+  const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { detail?: string } | null;
-    throw new Error(payload?.detail || 'Não foi possível baixar o arquivo.');
+    throw new ApiError(payload?.detail || 'Não foi possível baixar o arquivo.', response.status);
   }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

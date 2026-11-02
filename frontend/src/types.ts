@@ -1,5 +1,11 @@
 export type Period = 'day' | 'week' | 'month' | 'year';
-export type Section = 'dashboard' | 'invoices' | 'readings' | 'goodwe' | 'settings';
+export type Section = 'dashboard' | 'readings' | 'invoices' | 'goodwe' | 'settings';
+
+export interface AuthStatus {
+  auth_required: boolean;
+  authenticated: boolean;
+  volatile_storage: boolean;
+}
 
 export interface EnergyRecord {
   id: number;

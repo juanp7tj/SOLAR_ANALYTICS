@@ -133,3 +133,286 @@ def test_mutating_requests_reject_untrusted_origin_and_add_security_headers():
             assert untrusted_host.status_code == 400
 
     asyncio.run(exercise())
+
+
+def test_admin_login_protects_data_routes_and_logout(monkeypatch):
+    from app import config
+    from app.main import app, initialize_application
+
+    initialize_application()
+    monkeypatch.setattr(config, "AUTH_REQUIRED", True)
+    monkeypatch.setattr(config, "ADMIN_USERNAME", "solar-admin")
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", "senha-de-teste-muito-forte-123")
+
+    async def exercise():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
+            unauthenticated = await client.get("/api/readings")
+            assert unauthenticated.status_code == 401
+
+            bad_login = await client.post(
+                "/api/auth/login",
+                json={"username": "solar-admin", "password": "senha-incorreta"},
+                headers={"Origin": "http://127.0.0.1:3000"},
+            )
+            assert bad_login.status_code == 401
+            assert "solar_analytics_session" not in bad_login.headers.get("set-cookie", "")
+
+            login = await client.post(
+                "/api/auth/login",
+                json={"username": "solar-admin", "password": "senha-de-teste-muito-forte-123"},
+                headers={"Origin": "http://127.0.0.1:3000"},
+            )
+            assert login.status_code == 200
+            assert login.json()["authenticated"] is True
+            assert "httponly" in login.headers["set-cookie"].lower()
+            assert "solar_analytics_session" in login.headers["set-cookie"]
+            local_cookie = login.headers["set-cookie"].lower()
+            assert "samesite=lax" in local_cookie
+            assert "max-age=43200" in local_cookie
+            assert "secure" not in local_cookie
+
+            protected = await client.get("/api/readings")
+            assert protected.status_code == 200
+            status = await client.get("/api/auth/status")
+            assert status.json()["auth_required"] is True
+            assert status.json()["authenticated"] is True
+
+            logout = await client.post("/api/auth/logout", headers={"Origin": "http://127.0.0.1:3000"})
+            assert logout.status_code == 200
+            protected_after_logout = await client.get("/api/readings")
+            assert protected_after_logout.status_code == 401
+
+    asyncio.run(exercise())
+
+
+def test_public_authenticated_writes_require_a_trusted_origin(monkeypatch):
+    from app import config
+    from app.main import app
+
+    monkeypatch.setattr(config, "AUTH_REQUIRED", True)
+
+    async def exercise():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
+            missing_origin = await client.post("/api/auth/login", json={"username": "x", "password": "x"})
+            assert missing_origin.status_code == 403
+            bad_origin = await client.post(
+                "/api/auth/login",
+                json={"username": "x", "password": "x"},
+                headers={"Origin": "https://attacker.example"},
+            )
+            assert bad_origin.status_code == 403
+
+    asyncio.run(exercise())
+
+
+
+def _http_scope(path, *, method="POST", headers=None, session=None):
+    header_items = [(b"host", b"127.0.0.1")]
+    if headers:
+        header_items.extend(headers)
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.4"},
+        "http_version": "1.1",
+        "method": method,
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": header_items,
+        "server": ("127.0.0.1", 8000),
+        "client": ("127.0.0.1", 4321),
+        "session": session or {},
+    }
+
+
+def test_unauthenticated_multipart_is_rejected_before_body_read(monkeypatch):
+    from app import config
+    from app.middleware import RequestSecurityMiddleware
+
+    monkeypatch.setattr(config, "AUTH_REQUIRED", True)
+    scope = _http_scope(
+        "/api/invoices/extract",
+        headers=[
+            (b"origin", b"http://127.0.0.1:3000"),
+            (b"content-type", b"multipart/form-data; boundary=test"),
+            (b"content-length", b"12"),
+        ],
+    )
+    state = {"read": False, "downstream": False}
+    messages = []
+
+    async def receive():
+        state["read"] = True
+        return {"type": "http.request", "body": b"upload-body", "more_body": False}
+
+    async def downstream(_scope, _receive, _send):
+        state["downstream"] = True
+
+    async def send(message):
+        messages.append(message)
+
+    asyncio.run(RequestSecurityMiddleware(downstream)(scope, receive, send))
+    response_start = next(message for message in messages if message["type"] == "http.response.start")
+    assert response_start["status"] == 401
+    assert state == {"read": False, "downstream": False}
+
+
+def test_authenticated_oversized_content_length_is_rejected_without_read(monkeypatch):
+    from app import config, middleware
+    from app.middleware import RequestSecurityMiddleware
+
+    monkeypatch.setattr(config, "AUTH_REQUIRED", True)
+    monkeypatch.setitem(middleware.UPLOAD_BODY_LIMITS, "/api/invoices/extract", 8)
+    scope = _http_scope(
+        "/api/invoices/extract",
+        headers=[
+            (b"origin", b"http://127.0.0.1:3000"),
+            (b"content-length", b"9"),
+        ],
+        session={"solar_admin_authenticated": True},
+    )
+    read = False
+    messages = []
+
+    async def receive():
+        nonlocal read
+        read = True
+        return {"type": "http.request", "body": b"123456789", "more_body": False}
+
+    async def downstream(_scope, _receive, _send):
+        raise AssertionError("A requisição excessiva não deve chegar ao parser.")
+
+    async def send(message):
+        messages.append(message)
+
+    asyncio.run(RequestSecurityMiddleware(downstream)(scope, receive, send))
+    response_start = next(message for message in messages if message["type"] == "http.response.start")
+    assert response_start["status"] == 413
+    assert read is False
+
+
+def test_streaming_body_limit_handles_missing_content_length(monkeypatch):
+    from app import config, middleware
+    from app.middleware import RequestSecurityMiddleware
+
+    monkeypatch.setattr(config, "AUTH_REQUIRED", True)
+    monkeypatch.setitem(middleware.UPLOAD_BODY_LIMITS, "/api/invoices/extract", 8)
+    scope = _http_scope(
+        "/api/invoices/extract",
+        headers=[(b"origin", b"http://127.0.0.1:3000")],
+        session={"solar_admin_authenticated": True},
+    )
+    messages = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"123456789", "more_body": False}
+
+    async def downstream(_scope, downstream_receive, _send):
+        await downstream_receive()
+
+    async def send(message):
+        messages.append(message)
+
+    asyncio.run(RequestSecurityMiddleware(downstream)(scope, receive, send))
+    response_start = next(message for message in messages if message["type"] == "http.response.start")
+    assert response_start["status"] == 413
+
+
+def test_login_rate_limit_state_is_bounded_and_expires(monkeypatch):
+    from starlette.requests import Request
+
+    from app.services import auth
+
+    monkeypatch.setattr(auth, "_MAX_TRACKED_CLIENTS", 2)
+    with auth._attempts_lock:
+        auth._attempts.clear()
+        auth._last_global_cleanup = 0.0
+
+    def request_from(host):
+        scope = {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/api/auth/login",
+            "headers": [],
+            "client": (host, 4321),
+            "server": ("127.0.0.1", 8000),
+        }
+        return Request(scope)
+
+    clients = [request_from(f"198.51.100.{index}") for index in range(1, 11)]
+    for index, client in enumerate(clients):
+        auth.record_login_failure(client, now=1000.0 + index)
+    assert len(auth._attempts) <= 2
+    assert not auth.login_is_rate_limited(clients[-1], now=1009.0)
+    assert not auth.login_is_rate_limited(clients[-1], now=1009.0 + auth._ATTEMPT_WINDOW_SECONDS)
+    assert len(auth._attempts) == 0
+
+
+def test_render_https_session_cookie_flags_in_isolated_process(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "RENDER": "true",
+            "RENDER_EXTERNAL_URL": "https://solar-auth-test.onrender.com",
+            "RENDER_EXTERNAL_HOSTNAME": "solar-auth-test.onrender.com",
+            "SOLAR_AUTH_REQUIRED": "true",
+            "SOLAR_ADMIN_USERNAME": "solar-test-admin",
+            "SOLAR_ADMIN_PASSWORD": "unit-test-only-password-123456",
+            "SOLAR_SESSION_SECRET": "unit-test-session-secret-0123456789abcdef0123456789",
+            "SOLAR_DATA_DIR": str(tmp_path / "data"),
+            "SOLAR_BACKUP_DIR": str(tmp_path / "backups"),
+            "SOLAR_DEMO_AUTOLOAD": "false",
+            "SOLAR_VOLATILE_STORAGE": "true",
+            "SOLAR_DISABLE_API_DOCS": "true",
+        }
+    )
+    script = """
+import asyncio
+import httpx
+from app.main import app
+
+async def exercise():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url='https://solar-auth-test.onrender.com') as client:
+        response = await client.post(
+            '/api/auth/login',
+            json={'username': 'solar-test-admin', 'password': 'unit-test-only-password-123456'},
+            headers={'Origin': 'https://solar-auth-test.onrender.com'},
+        )
+        assert response.status_code == 200
+        cookie = response.headers['set-cookie'].lower()
+        assert 'httponly' in cookie
+        assert 'secure' in cookie
+        assert 'samesite=none' in cookie
+        assert 'max-age=43200' in cookie
+
+asyncio.run(exercise())
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, "A verificação de cookie HTTPS falhou; consulte a saída do subprocesso."
+
+
+
+def test_session_and_host_middleware_wrap_preparser_gate():
+    from app.main import app
+
+    order = [item.cls.__name__ for item in app.user_middleware]
+    assert order.index("SessionMiddleware") < order.index("TrustedHostMiddleware")
+    assert order.index("TrustedHostMiddleware") < order.index("RequestSecurityMiddleware")

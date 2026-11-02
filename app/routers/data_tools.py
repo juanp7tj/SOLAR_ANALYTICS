@@ -18,10 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.config import BACKUP_DIR, DATA_DIR, DATABASE_PATH
 from app.db import Base, SessionLocal, engine, get_db
+from app.limits import MAX_BACKUP_BYTES
 from app.models import EnergyRecord, Invoice
 
 router = APIRouter(prefix="/api", tags=["Exportação e backup"])
-MAX_BACKUP_BYTES = 100 * 1024 * 1024
 
 
 def _safe_spreadsheet_text(value: str | None) -> str:
