@@ -22,11 +22,13 @@ No modo local, o login fica desativado por padrão porque o servidor só aceita 
 
 ## Publicação opcional no Render Free
 
-O arquivo `render.yaml` define um Web Service `docker` no plano `free`, na região de Virgínia, com login obrigatório, um segredo de sessão gerado pelo Render, documentation API desligada e alerta de armazenamento volátil. **Nenhum disco persistente é definido ou cobrado.** Para usar esse Blueprint, primeiro a branch `main` do repositório GitHub precisa conter o código atualizado, o `Dockerfile` e `render.yaml`; no Render, crie um Blueprint, selecione o repositório e preencha `SOLAR_ADMIN_USERNAME` e `SOLAR_ADMIN_PASSWORD` quando solicitado. Use senha exclusiva com pelo menos 16 caracteres. O Render gera `SOLAR_SESSION_SECRET` automaticamente. Sem as credenciais válidas, a aplicação falha fechada e não inicia aberta ao público.
+**Demonstração pública ativa:** [solar-analytics-public-demo.onrender.com](https://solar-analytics-public-demo.onrender.com). Ela executa a versão Docker da branch `main`, exige uma única conta administrativa e mostra apenas dados fictícios. O arquivo privado de acesso foi entregue separadamente; não coloque a senha no GitHub nem a compartilhe com outras pessoas. Para trocá-la, atualize `SOLAR_ADMIN_PASSWORD` nas variáveis do serviço Render e aguarde o redeploy.
+
+O arquivo `render.yaml` é uma alternativa de configuração para criar um serviço em outro workspace. **Não crie outro Web Service/Blueprint para esta mesma demonstração**, pois o serviço acima já está conectado ao repositório. No Blueprint, as variáveis `SOLAR_ADMIN_USERNAME` e `SOLAR_ADMIN_PASSWORD` devem ser preenchidas pelo painel e `SOLAR_SESSION_SECRET` é gerada pelo Render. Sem credenciais válidas, a aplicação falha fechada e não inicia aberta ao público.
 
 **Limitação do Free:** o sistema de arquivos do serviço é efêmero e não há Persistent Disk. O banco SQLite e os arquivos locais/backup podem desaparecer em uma suspensão, reinicialização ou novo deploy; a disponibilidade também pode incluir período de espera após suspensão. Não use essa instância gratuita para guardar faturas, credenciais GoodWe nem dados reais. Ela serve para experimentar com a demonstração fictícia. Baixar um ZIP de backup para o próprio computador não transforma o serviço gratuito em armazenamento durável. Se precisa preservar dados reais na web, não implante esta configuração Free: escolha uma infraestrutura com armazenamento persistente e revise a arquitetura antes.
 
-Antes de iniciar o Blueprint no GitHub, substitua os arquivos antigos pela versão atualizada do projeto. Nesta configuração não foi criado disco, banco gerenciado pago ou serviço pago.
+O serviço atual está no plano `free`, na região de Virgínia. Não foi criado disco, banco gerenciado pago ou recurso pago. A conta também tem serviços anteriores separados; deixe-os como estão a menos que decida conscientemente removê-los no painel.
 
 ## Desenvolvimento local
 
